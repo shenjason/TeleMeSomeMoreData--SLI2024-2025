@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_GPS.h>
@@ -26,7 +27,7 @@ float ATTENNALONG = -117.61828493443528;
 
 RH_RF95 RFM(24, 25);
 AccelStepperWithDistance stepper1(AccelStepper::FULL4WIRE, 2, 3, 4, 5);
-AccelStepperWithDistance stepper2(AccelStepper::FULL4WIRE, 9, 10, 11, 12); 
+AccelStepperWithDistance stepper2(AccelStepper::FULL4WIRE, 9, 10, 11, 12);
 Adafruit_GPS GPS(&GPSSerial);
 
 
@@ -41,10 +42,23 @@ bool TrackingMode = false;
 float TargetAzimuthAngle = 0;
 float TargetAltitudeAngle = 0;
 
-
-
-
-
+// Forward declarations
+void receiveData();
+void receiveCommands();
+void stepperSetup();
+float getCurrentAngle1();
+float getCurrentAngle2();
+int angleToStep(float angle);
+float stepToAngle(int step);
+bool UpdateGPS();
+float calculateAzimuthAngle(float lat1, float long1, float lat2, float long2);
+float calculateAltitudeAngle(float lat1, float long1, float lat2, float long2);
+void getDeltas(float lat1, float long1, float lat2, float long2);
+float Distance(float lat1, float lon1, float lat2, float lon2);
+float ParseBufferFLOAT(uint8_t buffer[], int bufferparseindex);
+int ParseBufferINT(uint8_t buffer[], int bufferparseindex);
+unsigned int ParseBufferUINT(uint8_t buffer[], int bufferparseindex);
+uint8_t ParseBuffer(uint8_t buffer[], int bufferparseindex);
 
 union Convert{
   int i;
@@ -54,7 +68,7 @@ union Convert{
 };
 
 void setup()
-{  
+{
     Serial.begin(57600);
     pinMode(6, OUTPUT);
     digitalWrite(6, LOW);
@@ -86,7 +100,7 @@ void setup()
 void loop()
 {
   receiveData();
-  
+
   if (TrackingMode){
     stepper1.moveToAngle(calculateAltitudeAngle(ATTENNALAT, ATTENNALONG, TARGETLAT, TARGETLONG));
     stepper2.moveToAngle(calculateAzimuthAngle(ATTENNALAT, ATTENNALONG, TARGETLAT, TARGETLONG));
@@ -94,7 +108,7 @@ void loop()
     stepper1.moveToAngle(TargetAltitudeAngle);
     stepper2.moveToAngle(TargetAzimuthAngle);
   }
-  
+
 
   stepper1.run();
   stepper2.run();
@@ -109,7 +123,7 @@ void receiveData(){
       if ((char)buffer[1] != header[1]) return;
       if ((char)buffer[2] != header[2]) return;
       if ((char)buffer[3] != header[3]) return;
-      
+
       Serial.print("pn");
       Serial.print(ParseBufferUINT(buffer, 0));
       Serial.print(",et");
@@ -132,7 +146,7 @@ void receiveData(){
       Serial.print(ParseBufferFLOAT(buffer, 9));
       Serial.print(",ay");
       Serial.print(ParseBufferFLOAT(buffer, 10));
-      Serial.print(",az"); 
+      Serial.print(",az");
       Serial.print(ParseBufferFLOAT(buffer, 11));
       Serial.print(",al");
       float alti = ParseBufferFLOAT(buffer, 12);
@@ -158,7 +172,7 @@ void receiveData(){
       Serial.print(",sn");
       Serial.print(ParseBuffer(buffer, 19));
       Serial.println();
-    } 
+    }
   }
 }
 
@@ -185,12 +199,12 @@ void receiveCommands(){
     if (command == 'w'){
       TargetAltitudeAngle += 10;
     }
-    
-    
+
+
   }
 }
 
-void stepperSetup(){  
+void stepperSetup(){
   stepper1.setStepsPerRotation((int)round(360.0 / STEPANGLE));
   stepper2.setStepsPerRotation((int)round(360.0 / STEPANGLE));
   stepper1.setMaxSpeed(angleToStep(MAXSPEED));
@@ -212,15 +226,15 @@ int angleToStep(float angle){
 }
 
 float stepToAngle(int step){
-  return step * STEPANGLE; 
+  return step * STEPANGLE;
 }
 
 
 bool UpdateGPS(){
   GPS.read();
   if (GPS.newNMEAreceived()) {
-    if (!GPS.parse(GPS.lastNMEA())) 
-      return false; 
+    if (!GPS.parse(GPS.lastNMEA()))
+      return false;
     return true;
   }else{
     return false;
