@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <Wire.h>
 #include "Adafruit_SGP30.h"
 #include <SD.h>
@@ -24,6 +25,13 @@ int seg_i;
 int nofixticks; int fixticks; int noparseticks; int moxTicks;
 long prevTime;
 
+// Forward declarations
+void UpdateMox();
+void UpdateGPS();
+bool parseSegment(char newchar);
+bool parseGPSNMEA();
+void beep(float seconds);
+
 File dataFile; // SD card file
 
 
@@ -47,7 +55,7 @@ void setup() {
   Serial3.println("unmask BDS");
   Serial3.println("unmask GPS");
   Serial3.println("CONFIG COM1 115200 8 n 1"); //Port config
-  Serial3.println("GPGGA 0.05"); // Output GPGGA data at 50 hertz 
+  Serial3.println("GPGGA 0.05"); // Output GPGGA data at 50 hertz
   Serial3.println("saveconfig");
 
 
@@ -79,7 +87,7 @@ void setup() {
   dataFile.print("TVOC(ppb\t)");
   dataFile.print(", ");
   dataFile.println("eCO2(ppm)");
-  
+
   dataFile.close();
 
   // 3 quick beeps for initialization confirmation
@@ -89,7 +97,7 @@ void setup() {
   beep(0.1);
   delay(300);
   beep(0.1);
-  
+
   newsegment = false;
   nofixticks = 0;
   fixticks = 0;
@@ -115,7 +123,7 @@ void loop() {
     beep(0.1);
     nofixticks = 0;
   }
-  
+
 
   if (fixticks > 200){ // If GPS has fix
     // Double short beep
@@ -156,13 +164,13 @@ void loop() {
 
     dataFile.close();
   }
-  
+
 }
 
 void UpdateMox(){
   isMoxData = false;
   moxTicks++;
-  if (moxTicks < 1000) return; 
+  if (moxTicks < 1000) return;
   if  (!sgp.IAQmeasure()) return;
   moxTicks = 0;
   isMoxData = true;
@@ -185,7 +193,7 @@ void UpdateGPS(){
   bool done = parseSegment(read);
   if (done){
     noparseticks = 0;
-    // Serial.println(segment_f); 
+    // Serial.println(segment_f);
     if (parseGPSNMEA()){
       if (!fix){
         nofixticks ++;
@@ -224,7 +232,7 @@ bool parseSegment(char newchar){
 bool parseGPSNMEA(){
   char* part = strtok(segment_f, ",");
   if (strcmp(part, "GNGGA") != 0) return false;
-  
+
   int index = 1;
   while (part != NULL){
     part = strtok(NULL, ",");
@@ -253,7 +261,7 @@ bool parseGPSNMEA(){
     if (index == 3){
       if (strlen(part) < 1) continue;
       gpsLatDir = part[0];
-    } 
+    }
     if (index == 5){
       if (strlen(part) < 1) continue;
       gpsLongDir = part[0];

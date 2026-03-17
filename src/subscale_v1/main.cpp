@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <Wire.h>
 #include "Adafruit_SGP30.h"
 #include <SD.h>
@@ -21,6 +22,12 @@ int fixticks;
 int noparseticks;
 float TVOC; float eCO2;
 
+// Forward declarations
+void UpdateMox();
+void UpdateGPS();
+bool parseSegment(char newchar);
+bool parseGPSNMEA();
+void beep(float seconds);
 
 File dataFile;
 
@@ -31,7 +38,7 @@ void setup() {
   Serial3.begin(115200);
 
   beep(2);
-  
+
   // Serial3.println("freset");
   // Serial3.println("unmask GLO");
   // Serial3.println("unmask GAL");
@@ -63,7 +70,7 @@ void setup() {
   // dataFile.print("TVOC(ppb\t)");
   // dataFile.print(", ");
   // dataFile.println("eCO2(ppm)");
-  
+
   // dataFile.close();
 
   delay(1000);
@@ -125,7 +132,7 @@ void loop() {
 
     dataFile.close();
   }
-  
+
 }
 
 void UpdateMox(){
@@ -206,7 +213,7 @@ bool parseGPSNMEA(){
     // }
     // if (i == 3 && part[0] != '\0'){
     //   gpsLatDir = part[0];
-    // } 
+    // }
     // if (i == 5 && part[0] != '\0'){
     //   gpsLongDir = part[0];
     // }
