@@ -10,7 +10,7 @@
 ### Flight and Ground station software for the **AIAA OC Section** entry in [NASA SLI](https://www.nasa.gov/learning-resources/nasa-student-launch/) 2024-2025 competition.
 
 **"TeleMeSomeMoreData"**, is the payload for the 2024-2025 season, the software include three parts: 
-Flight software, Ground station control software, and the [Ground Station Display software](https://github.com/shenjason/GroundStationDisplay--SLI2024-2025/). The flight software continuously transmits 82-byte binary telemetry packets from the rocket over LoRa radio at 446.5 MHz. On the ground, the ground station control software decodes incoming packets, computes azimuth and altitude angles via the Haversine formula, and drives a dual-axis stepper gimbal to autonomously point a directional Yagi antenna at the rocket in flight. Live telemetry is streamed over serial to the Ground Station Display Software running on a laptop. 
+Flight software, Ground station control software, and the [Ground Station Display software](https://github.com/shenjason/GroundStationDisplay--SLI2024-2025/). The flight software continuously transmits 82-byte binary telemetry packets from the rocket over LoRa radio at 446.5 MHz. On the ground, the ground station control software decodes incoming packets, computes azimuth and altitude angles via the Haversine formula, and drives a dual-axis stepper gimbal to autonomously point a directional Yagi antenna at the rocket in flight. Live telemetry is streamed over serial to the Ground Station Display Software running on a laptop. A separate 1.2 GHz analog video link transmits live video from the payload to the ground station independently of the telemetry system.
 
 
 ### Team
@@ -28,7 +28,7 @@ Flight software, Ground station control software, and the [Ground Station Displa
 
 ## 2023-2024 Season (Year 1)
 
-The first year established the core telemetry pipeline: a Teensy 4.1 flight computer collecting IMU, barometric, GPS, and temperature data, packing it into a binary LoRa packet, and logging it to SD card. A basic receive-only ground station decoded the packets and printed labeled fields to a simple ground station interface. Manual antenna pointing was required.
+The first year established the core telemetry pipeline: a Teensy 4.1 flight computer collecting IMU, barometric, GPS, and temperature data, packing it into a binary LoRa packet. A basic receive-only ground station decoded the packets and printed labeled fields to a simple ground station interface. Manual antenna pointing was required.
 
 | | |
 |---|---|
@@ -44,6 +44,7 @@ Building on year one, this year added:
 - **Improved Unity ground station display** — full 3D flight visualization with live gauges for acceleration, velocity, altitude, GPS position, temperature, pressure, humidity, eCO2, and TVOC
 - **More sensors for more data** — air quality sensors (SGP30: TVOC, eCO2) added to subscale firmware; GPS multi-constellation support (GLONASS, Galileo, BeiDou)
 - **GPS self-calibration** — ground station now has it's own gps and can acquire its own fix at startup and use it as the reference coordinate, eliminating manual coordinate entry
+- **Live video downlink** — a 1.2 GHz analog video transmitter on the payload streams live video to a 12-channel receiver at the ground station, separate from the LoRa telemetry system
 
 | | |
 |---|---|
@@ -79,13 +80,36 @@ Each subdirectory is an independent [PlatformIO](https://platformio.org/) projec
 
 The flight firmware runs on a **Teensy 4.1** inside the rocket. On every loop it polls all sensors, builds a fixed 82-byte binary packet, writes it to the onboard SD card, and transmits it over LoRa radio.
 
-### Startup Sequence
+### Flowchart
 
-Each peripheral initializes in order with buzzer audio feedback — a short tone starts each step, a longer tone confirms success, a 3-second low tone halts on failure.
+Each sensor initializes in order with buzzer audio feedback. A short tone starts each step, a longer tone confirms success, a 3-second low freq tone halts on failure. Here's the flowchart for the flight software:
 
-<p align="center">
-  <img src="docs/images/Telmetery Flowchart v1.0.png" width="320" alt="Flight Computer Flowchart"/>
-</p>
+```
+                    [Start]
+                       |
+              [Initialize Radio Module]
+              /                      \
+          Fail                     Success
+            \                         |
+             v              [Initialize Sensors (GPS, IMU, etc)]
+          [Halt] <----Fail---/              \---Success
+             ^                        [Initialize SD card]
+             \--------------Fail-----/
+                                          |
+                                 [Buzzer Beep for 1s]
+                                          |
+                        +--------->[Sample Sensor Data]
+                        |                 |
+                        |    [Is Sensor Data complete?]
+                        |         /               \
+                        +---No---+               Yes
+                                          |
+                                [Store sensor data in SD card]
+                                          |
+                              [Send Sensor Data to Radio Module]
+                                          |
+                                  (Loop to "Sample Sensor Data")
+```
 
 The firmware **blocks until a GPS fix** before completing startup, ensuring every packet contains valid position data.
 
@@ -93,35 +117,33 @@ The firmware **blocks until a GPS fix** before completing startup, ensuring ever
 
 ```
 UpdateGPS() + UpdateBNO() + UpdateBME()
-  → if all sensors fresh → build binary packet → log CSV → transmit LoRa
+  → if all sensors fresh → build binary packet → transmit LoRa
 ```
 
-- **BNO055** — polled every 10 ms: Euler angles, linear acceleration, magnetometer
+- **BNO055** — polled every 10 ms: Euler angles, linear acceleration
 - **BME280** — polled every 10 ms: barometric altitude, pressure, humidity
 - **GPS** — polled every loop for new NMEA sentences
 - **Thermistor** — temperature via Steinhart-Hart equation on ADC pin A13
 
 ### Telemetry Packet Format (82 bytes)
 
-Packets are serialized into a flat binary buffer via a `union Convert` that reinterprets `float`/`int`/`uint` as raw bytes. A 4-byte `"HEAD"` magic header allows the ground station to validate packets before parsing.
+Packets are serialized into a flat binary buffer via a `union Convert` that reinterprets `float`/`int`/`uint` as raw bytes. A 4-byte `"AIAA"` magic header allows the ground station to validate packets before parsing. The buffer is always transmitted at 82 bytes with zeros padding unused space.
 
 | Field | Type | Bytes |
 |-------|------|-------|
-| Header (`HEAD`) | char[4] | 4 |
+| Header (`AIAA`) | char[4] | 4 |
 | Packet Number | uint32 | 4 |
 | Elapsed Time (ms) | uint32 | 4 |
-| Rotation X, Y, Z (Euler °) | float×3 | 12 |
-| Magnetometer X, Y, Z (µT) | float×3 | 12 |
+| Rotation X, Y, Z (Euler rad) | float×3 | 12 |
 | Linear Acceleration X, Y, Z (m/s²) | float×3 | 12 |
 | Altitude (m) | float | 4 |
-| Pressure (hPa) | float | 4 |
+| Pressure (Pa) | float | 4 |
 | Humidity (%) | float | 4 |
 | Temperature (°C) | float | 4 |
 | Latitude (°) | float | 4 |
 | Longitude (°) | float | 4 |
-| GPS Altitude (m) | float | 4 |
-| Satellites | uint8 | 1 |
-| **Total** | | **81** |
+| Battery Level | uint8 | 1 |
+| **Total (meaningful)** | | **61** |
 
 ### Payload Hardware (summary)
 
@@ -133,17 +155,32 @@ Packets are serialized into a flat binary buffer via a `union Convert` that rein
 | Adafruit GPS | Position & satellite count |
 | NTC Thermistor | Temperature (ADC + Steinhart-Hart) |
 | RFM95 LoRa | 446.5 MHz, 17 dBm TX |
-| SD Card | CSV data logging |
 
 ---
 
 ## Ground Station Control Software (`fullscale_groundstation`)
 
-Receives LoRa packets, decodes telemetry, drives a dual-axis stepper gimbal to track the rocket, and streams labeled data over serial to the display laptop.
+Receives LoRa packets, decodes telemetry, drives a dual-axis stepper gimbal to track the rocket, and streams labeled data over serial to the display laptop
 
-<p align="center">
-  <img src="docs/images/AntennaTrackingv3.0.drawio.png" width="280" alt="Antenna Tracking Algorithm Flowchart"/>
-</p>
+```
+                           [Start]
+                              |
+                 [Initialize GPS and radio module]
+                              |
+         [Read and store GPS coordinate values from the GPS module]
+                              |
+               [Read in data packet from radio module]
+                              |
+     +-->[Extract GPS coordinate values and altitude values from data packet]
+     |                        |
+     |    [Use the two GPS coordinates to calculate lateral displacement and distance]
+     |                        |
+     |         [Use the lateral displacement to calculate azimuth angle]
+     |                        |
+     |          [Use lateral distance and altitude to calculate altitude angle]
+     |                        |
+     +---[Move stepper motor to corresponding altitude and azimuth angles]
+```
 
 ### GPS Self-Calibration
 
@@ -170,6 +207,23 @@ After each valid packet, the firmware emits a single labeled line at 57600 baud 
 ```
 pn<N>,et<s>,gw<°>,gx<°>,gy<°>,gz<°>,mx<µT>,...,la<°>,lo<°>,ga<m>,sn<count>
 ```
+
+### Ground Station Hardware
+
+The ground station is built on a custom PCB housed in an enclosure. Three ~12 VDC batteries power the system through onboard connectors. The stepper motor drivers and video subsystem are mounted externally.
+
+| Component | Role |
+|-----------|------|
+| Teensy 4.1 | Ground station microcontroller |
+| Adafruit Ultimate GPS | GNSS reference fix for self-calibration |
+| RFM95 LoRa | 446.5 MHz receive via 433 MHz Yagi antenna |
+| Stepper Motor Driver ×2 | Drive azimuth and altitude motors |
+| Stepper Motor ×2 | Azimuth and altitude gimbal axes |
+| Limit Switch ×2 | Azimuth and altitude hard stops |
+| ClearClick USB Video Capture | Converts analog video feed to USB for display laptop |
+| 1.2 GHz 12-Channel Video Receiver | Receives analog video from rocket |
+| 1.2 GHz Yagi | Video receive antenna |
+| 3× ~12 VDC Batteries | System power |
 
 ### Manual Override
 
