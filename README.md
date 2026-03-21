@@ -10,7 +10,7 @@
 ### Flight and Ground station software for the **AIAA OC Section** entry in [NASA SLI](https://www.nasa.gov/learning-resources/nasa-student-launch/) 2024-2025 competition.
 
 **"TeleMeSomeMoreData"**, is the payload for the 2024-2025 season, the software include three parts: 
-Flight software, Ground station control software, and the [Ground Station Display software](https://github.com/shenjason/GroundStationDisplay--SLI2024-2025/). 
+[Flight software](https://github.com/shenjason/TeleMeSomeMoreData--SLI2024-2025/blob/main/fullscale_flight/src/main.cpp), [Ground station control software](https://github.com/shenjason/TeleMeSomeMoreData--SLI2024-2025/blob/main/fullscale_groundstation/src/main.cpp), and the [Ground Station Display software](https://github.com/shenjason/GroundStationDisplay--SLI2024-2025/). 
 
 
 **The goal of the software is to acheive an autonomous antenna tracking system, that can transmitt live sensor data down to a ground station that could decode flight data, track the rocket in real time, and display it all through a live 3D ground station interface.**
